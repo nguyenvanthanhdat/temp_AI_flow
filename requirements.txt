@@ -1,0 +1,6 @@
+# embeding
+torch==1.13
+transformers
+einops
+timm
+# flash_attn==1.0.5
