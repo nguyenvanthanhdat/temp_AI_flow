@@ -4,3 +4,11 @@ transformers
 einops
 timm
 # flash_attn==1.0.5
+
+# VLLM
+git+https://github.com/huggingface/transformers
+qwen-vl-utils
+accelerate>=0.26.0
+bitsandbytes
+optimum
+auto-gptq
