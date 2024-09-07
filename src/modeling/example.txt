@@ -1,0 +1,23 @@
+{
+  "Object": [
+    "woman",
+    "child",
+    "red and white checkered picnic blanket",
+    "green bag",
+    "apple",
+    "smartphone"
+  ],
+  "Character": [
+    "The woman is wearing a white t-shirt and blue shorts",
+    "The child is wearing a blue t-shirt and jeans"
+  ],
+  "Events": [
+    "The woman holding a smartphone and the child eating an apple.",
+    "The child are both sitting on the picnic blanket"
+  ],
+  "Scence": [
+    "The scene is a park",
+    "The weather is sunny"
+  ],
+  "Summary": "The image is a show a ..."
+}

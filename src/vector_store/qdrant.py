@@ -22,6 +22,14 @@ logger = logging.getLogger(__name__)
     }
 """
 
+# Map similarity metric to Qdrant distance metric
+SIMILARITY_METRIC_MAP = {
+    "dot": "Dot",
+    "manhattan": "Manhattan",
+    "euclidean": "Euclid",
+    "cosine": "Cosine"
+}
+        
 class QdrantVectorSpace:
     def __init__(
             self, 
