@@ -22,6 +22,14 @@ logger = logging.getLogger(__name__)
     }
 """
 
+# Map similarity metric to Qdrant distance metric
+SIMILARITY_METRIC_MAP = {
+    "dot": "Dot",
+    "manhattan": "Manhattan",
+    "euclidean": "Euclid",
+    "cosine": "Cosine"
+}
+        
 class QdrantVectorSpace:
     def __init__(
             self, 
@@ -39,15 +47,7 @@ class QdrantVectorSpace:
         self.collection_name = collection_name
         self.consistency_level = consistency_level
         self.collection_type = collection_type
-
-        # Map similarity metric to Qdrant distance metric
-        similarity_metric_map = {
-            "dot": "Dot",
-            "manhattan": "Manhattan",
-            "euclidean": "Euclid",
-            "cosine": "Cosine"
-        }
-        self.similarity_metric = similarity_metric_map.get(similarity_metric.lower(), "IP")
+        self.similarity_metric = SIMILARITY_METRIC_MAP.get(similarity_metric.lower(), "IP")
 
         # Initialize Qdrant client and collection
         if collection_type == "text":

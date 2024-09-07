@@ -37,6 +37,9 @@ class RetrieveModel:
         if image is not None:
             img_embd = self.model.encode_image(image)
         return text_embd, img_embd
+    
+    def get_token_len(self, ):
+        
 
 if __name__ == '__main__':
     model = RetrieveModel(device=torch.device("cuda:7"))
