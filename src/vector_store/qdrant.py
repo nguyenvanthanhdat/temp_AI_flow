@@ -5,7 +5,7 @@ from qdrant_client.http import models
 
 import logging
 import uuid
-import random
+import requests
 
 logger = logging.getLogger(__name__)
 
@@ -38,36 +38,49 @@ class QdrantVectorSpace:
             collection_name: str = "collection",
             similarity_metric: str = "IP",
             consistency_level: str = "Strong",
-            overwrite: bool = False,
+            snapshot: bool = False,
             collection_type: str = "image-text",
             image_dim: int = 512,
             text_dim: int = 512
         ) -> None:
 
+        # Initialize Qdrant client
+        self.token = token
+        self.qdrant_url = qdrant_url
+        self.client = QdrantClient(url=self.qdrant_url, api_key=self.token)
         self.collection_name = collection_name
-        self.consistency_level = consistency_level
-        self.collection_type = collection_type
-        self.similarity_metric = SIMILARITY_METRIC_MAP.get(similarity_metric.lower(), "IP")
 
-        # Initialize Qdrant client and collection
-        if collection_type == "text":
-            vector_params = VectorParams(size=text_dim, distance=self.similarity_metric)
-        elif collection_type == "image":
-            vector_params = VectorParams(size=image_dim, distance=self.similarity_metric)
-        elif collection_type == "image-text":
-            vector_params = {
-                "image": VectorParams(size=image_dim, distance=self.similarity_metric),
-                "text": VectorParams(size=text_dim, distance=self.similarity_metric),
+        if not snapshot:
+            self.consistency_level = consistency_level
+            self.collection_type = collection_type
+
+            # Map similarity metric to Qdrant distance metric
+            similarity_metric_map = {
+                "dot": "Dot",
+                "manhattan": "Manhattan",
+                "euclidean": "Euclid",
+                "cosine": "Cosine"
             }
+            self.similarity_metric = similarity_metric_map.get(similarity_metric.lower(), "IP")
 
-        # self.client = QdrantClient(url=qdrant_url, api_key=token)
-        self.client = QdrantClient(":memory:")
-        if overwrite:
-            self.client.recreate_collection(
-                collection_name=self.collection_name,
-                vectors_config=vector_params
-            )
-        else:
+            # Initialize Qdrant client and collection
+            if collection_type == "text":
+                vector_params = {
+                    "text": VectorParams(size=text_dim, distance=self.similarity_metric)
+                }
+            elif collection_type == "image":
+                vector_params = {
+                    "image": VectorParams(size=image_dim, distance=self.similarity_metric)
+                }
+            elif collection_type == "image-text":
+                vector_params = {
+                    "image": VectorParams(size=image_dim, distance=self.similarity_metric),
+                    "text": VectorParams(size=text_dim, distance=self.similarity_metric),
+                }
+
+            # Create the collection or loading old snapshot
+            if self.client.collection_exists(collection_name=self.collection_name):
+                self.client.delete_collection(collection_name=self.collection_name)
             self.client.create_collection(
                 collection_name=self.collection_name,
                 vectors_config=vector_params
@@ -158,64 +171,45 @@ class QdrantVectorSpace:
             limit=top_k
         )
     
+    def create_snapshot(self) -> None:
+        """
+            Creates a snapshot of the current Qdrant collection and saves it to the specified path.
+        """
+        snapshot_info = self.client.create_snapshot(collection_name=self.collection_name)
+        print(f"Snapshot created with the name {snapshot_info.name}")
+
+    def load_snapshot(self, snapshot_path: str) -> None:
+        """
+            Loads a snapshot from the specified path into the current Qdrant collection.
+        """
+        url = f"http://localhost:6333/collections/{self.collection_name}/snapshots/upload"
+    
+        # Open the snapshot file in binary read mode
+        with open(snapshot_path, 'rb') as snapshot_file:
+            # Prepare the multipart-form data
+            files = {
+                'snapshot': (snapshot_path, snapshot_file, 'application/octet-stream')
+            }
+            
+            headers = {
+                'api-key': self.token
+            }
+            
+            # Send the POST request
+            response = requests.post(url, headers=headers, files=files)
+            
+            # Check the response
+            if response.status_code == 200:
+                print("Snapshot uploaded successfully.")
+                print("Response:", response.json())
+            else:
+                print("Failed to upload snapshot.")
+                print("Status Code:", response.status_code)
+                print("Response:", response.text)
+
     def generate_uuid(self, video_id: str, keyframe_id: str) -> str:
         combined_string = f"{video_id}_{keyframe_id}"
         
         # Generate a UUID4 based on the combined string
         hash_value = uuid.uuid5(uuid.NAMESPACE_DNS, combined_string)
-        
         return str(hash_value)
-
-def main():
-    qdrant_url = "http://localhost:6333"
-    token = ""
-    collection_name = "test_collection"
-    
-    # Initialize QdrantVectorSpace
-    vector_space = QdrantVectorSpace(
-        qdrant_url=qdrant_url,
-        token=token,
-        collection_name=collection_name,
-        similarity_metric="cosine",
-        collection_type="image-text"
-    )
-
-    # Json file
-    import json
-    with open('example/metadata.json', 'r') as file:
-        metadata_samples = json.load(file)
-
-    # Add pairs to the vector space
-    pairs = []
-    for metadata in metadata_samples:
-        image_embedding = [random.random() for _ in range(512)]  # Random vector for image
-        text_embedding = [random.random() for _ in range(512)]   # Random vector for text
-
-        # Construct the pair
-        pair = {
-            'image_embedding': image_embedding,
-            'text_embedding': text_embedding,
-            'metadata': metadata
-        }
-        pairs.append(pair)
-    vector_space.add(pairs)
-
-    # Example query vectors
-    image_vector = [random.random() for _ in range(512)]  # Image vector with 512 dimensions
-    text_vector = [random.random() for _ in range(512)]  # Text vector with 768 dimensions
-
-    # Perform queries
-    image_results = vector_space.query_by_image(image_vector, top_k=2)
-    text_results = vector_space.query_by_text(text_vector, top_k=3)
-
-    # Print results
-    print("Image Query Results:")
-    for result in image_results:
-        print(result)
-
-    print("\nText Query Results:")
-    for result in text_results:
-        print(result)
-
-if __name__ == "__main__":
-    main()
