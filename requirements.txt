@@ -4,6 +4,8 @@ transformers
 einops
 timm
 # flash_attn==1.0.5
+fastembed
+#fastembed-gpu
 
 # VLLM
 git+https://github.com/huggingface/transformers
