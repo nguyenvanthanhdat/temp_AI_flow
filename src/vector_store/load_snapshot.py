@@ -14,7 +14,7 @@ def main():
     )
 
     # Upload snapshot
-    vector_space.load_snapshot("snapshot_collection/sample.snapshot")
+    vector_space.load_snapshot("example/snapshot/sample.snapshot")
 
     # Query the vector space by using image
     image_vector = [random.random() for _ in range(512)]
