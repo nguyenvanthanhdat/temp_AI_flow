@@ -6,6 +6,7 @@ from qdrant_client.http import models
 import logging
 import uuid
 import requests
+import os
 
 logger = logging.getLogger(__name__)
 
@@ -80,16 +81,7 @@ class QdrantVectorSpace:
         """
         self.client.create_payload_index(
             collection_name=self.collection_name,
-            field_name="video_id",
-            field_schema=models.KeywordIndexParams(
-                type="keyword",
-                is_tenant=True,
-            ),
-        )
-
-        self.client.create_payload_index(
-            collection_name=self.collection_name,
-            field_name="keyframe_id",
+            field_name="id",
             field_schema=models.KeywordIndexParams(
                 type="keyword",
                 is_tenant=True,
@@ -132,7 +124,8 @@ class QdrantVectorSpace:
                 vector=vector_search,
                 payload={
                     "video_id": video_id,
-                    "keyframe_id": keyframe_id
+                    "keyframe_id": keyframe_id,
+                    "id": f"{video_id}_{keyframe_id}"
                 }
             )
             points.append(point)
@@ -186,18 +179,29 @@ class QdrantVectorSpace:
             limit=top_k
         )
     
-    def create_snapshot(self) -> None:
+    def create_snapshot(self, output_path: str = None) -> None:
         """
             Creates a snapshot of the current Qdrant collection and saves it to the specified path.
         """
         snapshot_info = self.client.create_snapshot(collection_name=self.collection_name)
         print(f"Snapshot created with the name {snapshot_info.name}")
 
+        snapshot_url = f"{self.qdrant_url}/collections/{self.collection_name}/snapshots/{snapshot_info.name}"
+
+        response = requests.get(snapshot_url, headers={"api-key": self.token})
+        if output_path is None:
+            output_path = "./"
+        output_path = os.path.join(output_path, snapshot_info.name)
+
+        with open(output_path, "wb") as f:
+            f.write(response.content)
+        print(f"Snapshot saved to {output_path}")
+
     def load_snapshot(self, snapshot_path: str) -> None:
         """
             Loads a snapshot from the specified path into the current Qdrant collection.
         """
-        url = f"http://localhost:6333/collections/{self.collection_name}/snapshots/upload"
+        url = f"{self.qdrant_url}/collections/{self.collection_name}/snapshots/upload"
     
         # Open the snapshot file in binary read mode
         with open(snapshot_path, 'rb') as snapshot_file:

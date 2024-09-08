@@ -36,7 +36,7 @@ def main():
         pairs.append(pair)
     vector_space.add(pairs)
 
-    vector_space.create_snapshot()
+    vector_space.create_snapshot('example/snapshot')
 
     # Query the vector space by using image
     image_vector = [random.random() for _ in range(512)]
