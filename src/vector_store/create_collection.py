@@ -17,25 +17,26 @@ def main():
 
     # Json file
     import json
-    with open('example/metadata.json', 'r') as file:
-        metadata_samples = json.load(file)
+    with open('example/json/sample.json', 'r') as file:
+        sample = json.load(file)
 
     # Add pairs to the vector space
     pairs = []
-    for metadata in metadata_samples:
+    for each in sample:
         image_embedding = [random.random() for _ in range(512)]  # Random vector for image
         text_embedding = [random.random() for _ in range(512)]   # Random vector for text
 
         # Construct the pair
         pair = {
+            'video_id': each['video_id'],
+            'keyframe_id': each['keyframe_id'],
             'image_embedding': image_embedding,
-            'text_embedding': text_embedding,
-            'metadata': metadata
+            'text_embedding': text_embedding
         }
         pairs.append(pair)
     vector_space.add(pairs)
 
-    vector_space.create_snapshot()
+    vector_space.create_snapshot('example/snapshot')
 
     # Query the vector space by using image
     image_vector = [random.random() for _ in range(512)]

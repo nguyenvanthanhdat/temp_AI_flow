@@ -6,30 +6,19 @@ from qdrant_client.http import models
 import logging
 import uuid
 import requests
+import os
 
 logger = logging.getLogger(__name__)
 
 """
     {
+        video_id: "1",
+        keyframe_id: "1",
         image_embedding: [0.1, 0.2, 0.3, ...],
         text_embedding: [0.4, 0.5, 0.6, ...],
-        metadata: {
-            video_id: "video_1",
-            keyframe_id: "keyframe_1"
-            image: Image.open("image.jpg"),
-            text: "A cat is sitting on a table."
-        }
     }
 """
 
-# Map similarity metric to Qdrant distance metric
-SIMILARITY_METRIC_MAP = {
-    "dot": "Dot",
-    "manhattan": "Manhattan",
-    "euclidean": "Euclid",
-    "cosine": "Cosine"
-}
-        
 class QdrantVectorSpace:
     def __init__(
             self, 
@@ -86,16 +75,29 @@ class QdrantVectorSpace:
                 vectors_config=vector_params
             )
 
+    def index(self):
+        """
+            Index the Qdrant collection.
+        """
+        self.client.create_payload_index(
+            collection_name=self.collection_name,
+            field_name="id",
+            field_schema=models.KeywordIndexParams(
+                type="keyword",
+                is_tenant=True,
+            ),
+        )
+
     def add(self, pairs: List[Dict[str, Any]], **add_kwargs: Any) -> List[str]:
         points = []
         for pair in pairs:
             # Extract embeddings and metadata
             image_embedding = pair.get('image_embedding')
             text_embedding = pair.get('text_embedding')
-            metadata = pair.get('metadata', {})
 
-            video_id = metadata.get('video_id', '')
-            keyframe_id = metadata.get('keyframe_id', '')
+            video_id = pair.get('video_id', '')
+            keyframe_id = pair.get('keyframe_id', '')
+
             idx = self.generate_uuid(video_id, keyframe_id)
 
             # Ensure both image and text embeddings are provided
@@ -120,7 +122,11 @@ class QdrantVectorSpace:
             point = models.PointStruct(
                 id=idx,
                 vector=vector_search,
-                payload=metadata
+                payload={
+                    "video_id": video_id,
+                    "keyframe_id": keyframe_id,
+                    "id": f"{video_id}_{keyframe_id}"
+                }
             )
             points.append(point)
 
@@ -130,16 +136,18 @@ class QdrantVectorSpace:
             points=points
         )
 
-    def delete(self, video_id: str, keyframe_id: str, **delete_kwargs: Any) -> None:
-        """
-            Delete a point from the Qdrant collection based on video_id and keyframe_id.
-        """
-        # Delete the point from Qdrant collection
-        idx = self.generate_uuid(video_id, keyframe_id)
-        self.client.delete(
-            collection_name=self.collection_name,
-            point_ids=[idx]
-        )
+        self.index()
+
+    # def delete(self, video_id: str, keyframe_id: str, **delete_kwargs: Any) -> None:
+    #     """
+    #         Delete a point from the Qdrant collection based on video_id and keyframe_id.
+    #     """
+    #     # Delete the point from Qdrant collection
+    #     idx = self.generate_uuid(video_id, keyframe_id)
+    #     self.client.delete(
+    #         collection_name=self.collection_name,
+    #         point_ids=[idx]
+    #     )
 
     def query_by_image(self, query_vector: List[float], **kwargs: Any) -> List[Dict[str, str]]:
         """
@@ -171,18 +179,29 @@ class QdrantVectorSpace:
             limit=top_k
         )
     
-    def create_snapshot(self) -> None:
+    def create_snapshot(self, output_path: str = None) -> None:
         """
             Creates a snapshot of the current Qdrant collection and saves it to the specified path.
         """
         snapshot_info = self.client.create_snapshot(collection_name=self.collection_name)
         print(f"Snapshot created with the name {snapshot_info.name}")
 
+        snapshot_url = f"{self.qdrant_url}/collections/{self.collection_name}/snapshots/{snapshot_info.name}"
+
+        response = requests.get(snapshot_url, headers={"api-key": self.token})
+        if output_path is None:
+            output_path = "./"
+        output_path = os.path.join(output_path, snapshot_info.name)
+
+        with open(output_path, "wb") as f:
+            f.write(response.content)
+        print(f"Snapshot saved to {output_path}")
+
     def load_snapshot(self, snapshot_path: str) -> None:
         """
             Loads a snapshot from the specified path into the current Qdrant collection.
         """
-        url = f"http://localhost:6333/collections/{self.collection_name}/snapshots/upload"
+        url = f"{self.qdrant_url}/collections/{self.collection_name}/snapshots/upload"
     
         # Open the snapshot file in binary read mode
         with open(snapshot_path, 'rb') as snapshot_file:
