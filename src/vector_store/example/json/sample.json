@@ -1,0 +1,22 @@
+[
+    {
+        "video_id": "1",
+        "keyframe_id": "1"
+    },
+    {
+        "video_id": "2",
+        "keyframe_id": "5"
+    },
+    {
+        "video_id": "3",
+        "keyframe_id": "3"
+    },
+    {
+        "video_id": "4",
+        "keyframe_id": "8"
+    },
+    {
+        "video_id": "5",
+        "keyframe_id": "2"
+    }
+]
