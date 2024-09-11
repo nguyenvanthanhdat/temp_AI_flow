@@ -1,130 +1,127 @@
-import numpy as np
 import os
 import sys
 sys.path.append(os.path.join(os.path.dirname(__file__), '..'))
 
-from typing import Optional, Sequence, Union, List, Dict, Any, Type, Iterable
-from fastembed.image.image_embedding_base import ImageEmbeddingBase
-from fastembed.image.onnx_embedding import OnnxImageEmbedding
-from fastembed.text.text_embedding_base import TextEmbeddingBase
-from fastembed.text.onnx_embedding import OnnxTextEmbedding
-from fastembed.common import OnnxProvider
-from embeding import (
-    JinaImageEmbeddingWorker,
-    JinaImageEmbedding,
-    JinaTextEmbeddingWorker,
-    JinaTextEmbedding
-)
+import base64
+import requests
+import numpy as np
+import onnxruntime as ort
+from transformers import AutoTokenizer, AutoImageProcessor
+
+from io import BytesIO
+from embeding.embd_utils import normalize
+
+sess_options = ort.SessionOptions()
+sess_options.graph_optimization_level = ort.GraphOptimizationLevel.ORT_ENABLE_ALL
 
 
-class AICTextEmbedding(TextEmbeddingBase):
-    EMBEDDINGS_REGISTRY: List[Type[TextEmbeddingBase]] = [
-        OnnxTextEmbedding,
-        JinaTextEmbedding,
-        JinaTextEmbeddingWorker
-    ]
-
-    @classmethod
-    def list_supported_models(cls) -> List[Dict[str, Any]]:
-        result = []
-        for embedding in cls.EMBEDDINGS_REGISTRY:
-            result.extend(embedding.list_supported_models())
-        return result
-
+class JinaTextEmbeding:
     def __init__(
         self,
-        model_name: str = None,
-        cache_dir: Optional[str] = None,
-        threads: Optional[int] = None,
-        providers: Optional[Sequence[OnnxProvider]] = None,
-        **kwargs,
+        model_name_or_path:str = None,
     ):
-        super().__init__(model_name, cache_dir, threads, **kwargs)
-
-        for EMBEDDING_MODEL_TYPE in self.EMBEDDINGS_REGISTRY:
-            supported_models = EMBEDDING_MODEL_TYPE.list_supported_models()
-            if any(
-                model_name.lower() == model["model"].lower()
-                for model in supported_models
-            ):
-                self.model = EMBEDDING_MODEL_TYPE(
-                    model_name,
-                    cache_dir,
-                    threads=threads,
-                    providers=providers,
-                    **kwargs,
-                )
-                return
-
-        raise ValueError(
-            f"Model {model_name} is not supported in TextEmbedding."
-            "Please check the supported models using `TextEmbedding.list_supported_models()`"
+        self.load_model(model_name_or_path)
+        
+    def load_model(self, model_name_or_path, provider=["CUDAExecutionProvider","CPUExecutionProvider"]):
+        _model_name_or_path = os.path.join(model_name_or_path, 'onnx/text_model.onnx')
+        self.model = ort.InferenceSession(
+            _model_name_or_path,
+            sess_options=sess_options,
+            providers=provider
         )
-
-    def embed(
-        self,
-        documents: Union[str, Iterable[str]],
-        batch_size: int = 256,
-        parallel: Optional[int] = None,
-        **kwargs,
-    ) -> Iterable[np.ndarray]:
-        yield from self.model.embed(documents, batch_size, parallel, **kwargs)
+        self.tokenizer = AutoTokenizer.from_pretrained(model_name_or_path, trust_remote_code=True)
         
+        self.inputs = [_inp.name for _inp in self.model.get_inputs()]
+        self.outputs = [_opt.name for _opt in self.model.get_outputs()]
         
-class AICImageEmbedding(ImageEmbeddingBase):
-    EMBEDDINGS_REGISTRY: List[Type[ImageEmbeddingBase]] = [
-        OnnxImageEmbedding,
-        JinaImageEmbedding,
-        JinaImageEmbeddingWorker
-    ]
+    def inference(self, x, norm_embeds:bool=True):
+        inp_tensor = self.tokenizer(x, padding=True, return_tensors='np')['input_ids']
+        inp_tensor = np.expand_dims(inp_tensor, axis=0)
+        embeddings = self.model.run(self.outputs, dict(zip(self.inputs, inp_tensor)))
+        if norm_embeds:
+            embeddings = normalize(embeddings)
+        
+        return embeddings
 
-    @classmethod
-    def list_supported_models(cls) -> List[Dict[str, Any]]:
-        result = []
-        for embedding in cls.EMBEDDINGS_REGISTRY:
-            result.extend(embedding.list_supported_models())
-        return result
 
+class JinaImageEmbeding:
     def __init__(
         self,
-        model_name: str = None,
-        cache_dir: Optional[str] = None,
-        threads: Optional[int] = None,
-        providers: Optional[Sequence[OnnxProvider]] = None,
-        **kwargs,
+        model_name_or_path:str = None,
     ):
-        super().__init__(model_name, cache_dir, threads, **kwargs)
-
-        for EMBEDDING_MODEL_TYPE in self.EMBEDDINGS_REGISTRY:
-            supported_models = EMBEDDING_MODEL_TYPE.list_supported_models()
-            if any(
-                model_name.lower() == model["model"].lower()
-                for model in supported_models
-            ):
-                self.model = EMBEDDING_MODEL_TYPE(
-                    model_name,
-                    cache_dir,
-                    threads=threads,
-                    providers=providers,
-                    **kwargs,
-                )
-                return
-
-        raise ValueError(
-            f"Model {model_name} is not supported in TextEmbedding."
-            "Please check the supported models using `TextEmbedding.list_supported_models()`"
-        )
-
-    def embed(
-        self,
-        documents: Union[str, Iterable[str]],
-        batch_size: int = 256,
-        parallel: Optional[int] = None,
-        **kwargs,
-    ) -> Iterable[np.ndarray]:
-        yield from self.model.embed(documents, batch_size, parallel, **kwargs)
+        self.load_model(model_name_or_path)
         
+    def load_model(self, model_name_or_path, provider=["CUDAExecutionProvider","CPUExecutionProvider"]):
+        _model_name_or_path = os.path.join(model_name_or_path, 'onnx/vision_model.onnx')
+        self.model = ort.InferenceSession(
+            _model_name_or_path,
+            sess_options=sess_options,
+            providers=provider
+        )
+        self.processor = AutoImageProcessor.from_pretrained(model_name_or_path, trust_remote_code=True)
+        
+        self.inputs = [_inp.name for _inp in self.model.get_inputs()]
+        self.outputs = [_opt.name for _opt in self.model.get_outputs()]
+        
+    def inference(self, examples, norm_embeds:bool=True):
+        process_inp = self.preprocess(examples)
+        inp_tensor = self.processor(process_inp, return_tensors='np')['pixel_values']
+        inp_tensor = np.expand_dims(inp_tensor, axis=0)
+        embeddings = self.model.run(self.outputs, dict(zip(self.inputs, inp_tensor)))[0]
+        if norm_embeds:
+            embeddings = normalize(embeddings)
+        
+        return embeddings
+    
+    def preprocess(self, examples):
+        processed_inputs = []
+        for img in examples:
+            if isinstance(img, str):
+                if img.startswith('http'):
+                    response = requests.get(img)
+                    image = Image.open(BytesIO(response.content)).convert('RGB')
+                elif img.startswith('data:image/'):
+                    image = self.decode_data_image(img).convert('RGB')
+                else:
+                    image = Image.open(img).convert('RGB')
+            elif isinstance(img, Image.Image):
+                image = img.convert('RGB')
+            else:
+                raise ValueError("Unsupported image format")
+
+            processed_inputs.append(image)
+            
+        return processed_inputs
+            
+    def decode_data_image(self, data_image_str):
+        _, data = data_image_str.split(',', 1)
+        image_data = base64.b64decode(data)
+        return Image.open(BytesIO(image_data))
+
         
 if __name__ == '__main__':
-    jina_embd = AICImageEmbedding(model_name='jina-image')
-    jina_embd = AICTextEmbedding(model_name='jina-text')
+    from PIL import Image
+    
+    # Image Embeding
+    images = [
+        Image.open('sample/joy.jpg'),
+        Image.open('output/L03_V001/L03_V001_00005.jpg'),
+        Image.open('output/L03_V001/L03_V001_00180.jpg'),
+        Image.open('output/L03_V001/L03_V001_00280.jpg'),
+        Image.open('output/L03_V001/L03_V001_00430.jpg'),
+    ]
+    model = JinaImageEmbeding('weights/jina-clip-v1')
+    result = model.inference(images, norm_embeds=True)
+    print(result)
+    
+    print("\n\n")
+    # Text embeding
+    text = [
+        'Hello all my friend',
+        "This is my test",
+        "Run multiprocessing pipeline"
+    ]
+
+    model = JinaTextEmbeding('weights/jina-clip-v1')
+    result = model.inference(text, norm_embeds=True)
+    print(result)
