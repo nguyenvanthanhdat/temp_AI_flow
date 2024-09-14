@@ -13,7 +13,7 @@ logger = logging.getLogger(__name__)
 """
     {
         video_id: "1",
-        keyframe_id: "1",
+        frame_id: "1",
         image_embedding: [0.1, 0.2, 0.3, ...],
         text_embedding: [0.4, 0.5, 0.6, ...],
     }
@@ -22,15 +22,15 @@ logger = logging.getLogger(__name__)
 class QdrantVectorSpace:
     def __init__(
             self, 
-            qdrant_url: str, 
+            qdrant_url: str = "http://localhost:6333", 
             token: str = "",
             collection_name: str = "collection",
-            similarity_metric: str = "IP",
+            similarity_metric: str = "cosine",
             consistency_level: str = "Strong",
             snapshot: bool = False,
             collection_type: str = "image-text",
-            image_dim: int = 512,
-            text_dim: int = 512
+            image_dim: int = 768,
+            text_dim: int = 768
         ) -> None:
 
         # Initialize Qdrant client
@@ -53,6 +53,7 @@ class QdrantVectorSpace:
             self.similarity_metric = similarity_metric_map.get(similarity_metric.lower(), "IP")
 
             # Initialize Qdrant client and collection
+            vector_params = {}
             if collection_type == "text":
                 vector_params = {
                     "text": VectorParams(size=text_dim, distance=self.similarity_metric)
@@ -88,7 +89,7 @@ class QdrantVectorSpace:
             ),
         )
 
-    def add(self, pairs: List[Dict[str, Any]], **add_kwargs: Any) -> List[str]:
+    def add_pairs(self, pairs: List[Dict[str, Any]], **add_kwargs: Any) -> List[str]:
         points = []
         for pair in pairs:
             # Extract embeddings and metadata
@@ -96,9 +97,9 @@ class QdrantVectorSpace:
             text_embedding = pair.get('text_embedding')
 
             video_id = pair.get('video_id', '')
-            keyframe_id = pair.get('keyframe_id', '')
+            frame_id = pair.get('frame_id', '')
 
-            idx = self.generate_uuid(video_id, keyframe_id)
+            idx = self.generate_uuid(video_id, frame_id)
 
             # Ensure both image and text embeddings are provided
             if image_embedding is None or text_embedding is None:
@@ -124,8 +125,8 @@ class QdrantVectorSpace:
                 vector=vector_search,
                 payload={
                     "video_id": video_id,
-                    "keyframe_id": keyframe_id,
-                    "id": f"{video_id}_{keyframe_id}"
+                    "frame_id": frame_id,
+                    "id": f"{video_id}_{frame_id}"
                 }
             )
             points.append(point)
@@ -135,7 +136,49 @@ class QdrantVectorSpace:
             collection_name=self.collection_name,
             points=points
         )
+        self.index()
 
+    def add_pair(self, pair: Dict[str, Any], **add_kwargs: Any) -> None:
+        image_embedding = pair.get('image_embedding')
+        text_embedding = pair.get('text_embedding')
+        video_id = pair.get('video_id', '')
+        frame_id = pair.get('frame_id', '')
+
+        idx = self.generate_uuid(video_id, frame_id)
+
+        # Ensure both image and text embeddings are provided
+        if image_embedding is None or text_embedding is None:
+            raise ValueError("Each pair must contain both 'image_embedding' and 'text_embedding'.")
+
+        # Set up vector search
+        if self.collection_type == "image-text":
+            vector_search = {
+                "image": image_embedding,
+                "text": text_embedding
+            }
+        elif self.collection_type == "image":
+            vector_search = {
+                "image": image_embedding
+            }
+        elif self.collection_type == "text":
+            vector_search = {
+                "text": text_embedding
+            }
+
+        point = models.PointStruct(
+            id=idx,
+            vector=vector_search,
+            payload={
+                "video_id": video_id,
+                "frame_id": frame_id,
+                "id": f"{video_id}_{frame_id}"
+            }
+        )
+
+        self.client.upload_points(
+            collection_name=self.collection_name,
+            points=[point]
+        )
         self.index()
 
     # def delete(self, video_id: str, keyframe_id: str, **delete_kwargs: Any) -> None:
@@ -154,7 +197,7 @@ class QdrantVectorSpace:
             Query the Qdrant collection based on the input query (image).
         """
         # Parameters
-        top_k = kwargs.get('top_k', 10)  # Number of top results to return
+        top_k = kwargs.get('top_k', 100)  # Number of top results to return
         
         # Perform the query
         return self.client.search(
@@ -169,7 +212,7 @@ class QdrantVectorSpace:
             Query the Qdrant collection based on the input query (vector).
         """
         # Parameters
-        top_k = kwargs.get('top_k', 10)  # Number of top results to return
+        top_k = kwargs.get('top_k', 100)  # Number of top results to return
         
         # Perform the query
         return self.client.search(
@@ -226,8 +269,8 @@ class QdrantVectorSpace:
                 print("Status Code:", response.status_code)
                 print("Response:", response.text)
 
-    def generate_uuid(self, video_id: str, keyframe_id: str) -> str:
-        combined_string = f"{video_id}_{keyframe_id}"
+    def generate_uuid(self, video_id: str, frame_id: str) -> str:
+        combined_string = f"{video_id}_{frame_id}"
         
         # Generate a UUID4 based on the combined string
         hash_value = uuid.uuid5(uuid.NAMESPACE_DNS, combined_string)
