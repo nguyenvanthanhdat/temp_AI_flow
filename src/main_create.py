@@ -22,15 +22,15 @@ def main():
     os.makedirs("result/collection", exist_ok=True)
 
     # Initialize
-    # vector_store = QdrantVectorSpace(
-    #     collection_name=args.collection_name,
-    #     similarity_metric=args.similarity_metric,
-    #     collection_type=args.collection_type
-    # )
-    # model = JinaImageEmbeding('weights/jina-clip-v1')
-    image_database = ImageDatabaseSQL('result/database/image.sqlite', 'image')
-    image_database.connect()
-    image_database.create_table()
+    vector_store = QdrantVectorSpace(
+        collection_name=args.collection_name,
+        similarity_metric=args.similarity_metric,
+        collection_type=args.collection_type
+    )
+    model = JinaImageEmbeding('weights/jina-clip-v1')
+    # image_database = ImageDatabaseSQL('result/database/image.sqlite', 'image')
+    # image_database.connect()
+    # image_database.create_table()
 
     # Load dataset
     ds = []
@@ -46,7 +46,6 @@ def main():
         )
         ds.append(ds_each['train'])
     summary_ds = concatenate_datasets(ds)
-    # summary_ds = summary_ds.select(range(200))
 
     # Embedding
     def embedding(x):
@@ -72,13 +71,13 @@ def main():
         image_database.insert_multiple(x)
 
     # Add to database
-    print("Adding to database:")
-    add_database = summary_ds.map(
-        database_add, 
-        batched=True,
-        batch_size=100,
-        num_proc=4
-    )
+    # print("Adding to database:")
+    # add_database = summary_ds.map(
+    #     database_add, 
+    #     batched=True,
+    #     batch_size=1000,
+    #     num_proc=1
+    # )
 
     # Add pairs to the vector space
     print("Embedding dataset:")
@@ -91,8 +90,8 @@ def main():
     )
     vector_store.add_pairs(processed_ds)
 
-    # Create snapshot
-    vector_store.create_snapshot('result/collection')
+    # # Create snapshot
+    # vector_store.create_snapshot('result/collection')
 
 if __name__ == "__main__":
     main()
