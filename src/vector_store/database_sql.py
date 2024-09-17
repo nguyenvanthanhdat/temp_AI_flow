@@ -1,6 +1,8 @@
 import sqlite3
 from typing import Any, Dict, List
 import time
+from PIL import Image
+import io
 
 class DatabaseSQL:
     def __init__(self, databse_name: str, table_name: str) -> None:
@@ -69,6 +71,33 @@ class ImageDatabaseSQL(DatabaseSQL):
                        REPLACE INTO {self.table_name} (video_id, keyframe_id, image) 
                        VALUES (?, ?, ?)
                        """, (video_id, keyframe_id, binary_data))
+        self.connection.commit()
+        cursor.close()
+
+    def process_blob(self, image: Image) -> None:
+        with io.BytesIO() as output:
+            image.save(output, format='PNG')
+            binary_data = output.getvalue()
+        return binary_data
+
+    def insert_multiple(self, data: Dict):
+        if self.connection is None:
+            self.connect()
+
+        insert_query = f"""
+                        REPLACE INTO {self.table_name} (video_id, keyframe_id, image) 
+                        VALUES (?, ?, ?)
+                        """
+        
+        insert_values = []
+        for i in range(len(data['image'])):
+            video_id = data['video_id'][i]
+            frame_id = data['frame_id'][i]
+            binary_image = self.process_blob(data['image'][i])
+            insert_values.append((video_id, frame_id, binary_image))
+
+        cursor = self.connection.cursor()
+        cursor.executemany(insert_query, insert_values)
         self.connection.commit()
         cursor.close()
 

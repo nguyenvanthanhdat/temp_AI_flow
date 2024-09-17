@@ -8,3 +8,6 @@ accelerate>=0.26.0
 bitsandbytes
 optimum
 auto-gptq
+
+# vector store
+qdrant_client

@@ -29,12 +29,12 @@ def main():
         # Construct the pair
         pair = {
             'video_id': each['video_id'],
-            'keyframe_id': each['keyframe_id'],
+            'frame_id': each['frame_id'],
             'image_embedding': image_embedding,
             'text_embedding': text_embedding
         }
         pairs.append(pair)
-    vector_space.add(pairs)
+    vector_space.add_pairs(pairs)
 
     vector_space.create_snapshot('example/snapshot')
 
