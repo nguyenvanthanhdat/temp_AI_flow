@@ -64,3 +64,6 @@
         └── qdrant_snapshot.snapshot
 
 ```
+
+Link snapshot: [Here]([https://drive.google.com/file/d/1ycwgkKNY6fV_viz-qTvJWB8telohDRCu/view?usp=drive_link])
+Link weight JINA: [Here]([https://huggingface.co/jinaai/jina-clip-v1/tree/main])
